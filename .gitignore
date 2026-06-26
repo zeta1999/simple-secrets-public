@@ -1,0 +1,9 @@
+/target
+/dist
+/.codegraph
+/xxx.txt
+lean/.lake/
+shares/
+pairing-code.txt
+pairing-bundle.txt
+rec-file.txt

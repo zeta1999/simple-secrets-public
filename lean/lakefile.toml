@@ -1,0 +1,5 @@
+name = "simple-secrets-security"
+defaultTargets = ["Security"]
+
+[[lean_lib]]
+name = "Security"

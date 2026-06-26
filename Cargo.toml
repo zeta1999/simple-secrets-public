@@ -1,0 +1,33 @@
+[package]
+name = "simple-secrets"
+version = "0.1.0"
+edition = "2021"
+description = "A system of secret managers utilizing post-quantum cryptography and advanced secret sharing."
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+secure-memory = { path = "../rust-secure-memory-public/crates/secure-memory" }
+simple_network = { path = "../simple-network-public" }
+
+# Additional common cryptography dependencies might be added here later
+rand = "0.8"
+argon2 = "0.5"
+sha2 = "0.10"
+sha1 = "0.10"
+hmac = "0.12"
+hkdf = "0.12"
+aes-gcm = "0.10"
+zeroize = "1.8"
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1.3"
+subtle = "2.5"
+base64 = "0.21"
+jni = "0.21"
+libc = "0.2"
+ratatui = "0.26"
+crossterm = "0.27"
+clap = { version = "4", features = ["derive"] }
+rpassword = "7"
+qrcode = "0.14"
