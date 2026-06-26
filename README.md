@@ -1,8 +1,25 @@
-# simple-secrets
+<p align="center">
+  <img src="assets/logo.svg" alt="simple-secrets" width="150"/>
+</p>
 
-A post-quantum secret manager built on advanced secret sharing.
+<h1 align="center">simple-secrets</h1>
 
-Part of [**simple tools**](https://zeta1999.github.io/renoir42/simple-tools.html) — small, composable Rust libraries for building tooling fast from a harness.
+<p align="center">
+  <strong>A post-quantum secret manager built on advanced secret sharing.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/part%20of-simple%20tools-00d4ff.svg" alt="part of simple tools">
+  <img src="https://img.shields.io/badge/Rust-2021-orange.svg?logo=rust" alt="Rust">
+  <img src="https://img.shields.io/badge/status-released-success.svg" alt="released">
+  <img src="https://img.shields.io/badge/crypto-post--quantum-purple.svg" alt="post-quantum">
+  <img src="https://img.shields.io/badge/secret-sharing-blueviolet.svg" alt="secret sharing">
+  <img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="license">
+</p>
+
+> Part of [**simple tools**](https://zeta1999.github.io/renoir42/simple-tools.html) — small, composable Rust libraries for building tooling fast from a harness.
+
+---
 
 ## What it does
 
