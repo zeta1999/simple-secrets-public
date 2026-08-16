@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::crypto::vdf_kdf::{derive_key, Argon2Params};
+use crate::core::name::validate_secret_name;
+use crate::crypto::vdf_kdf::{derive_key, Argon2Params, MAX_VDF_ITERATIONS};
 use hkdf::Hkdf;
 use secure_memory::crypto::{decrypt_aad, encrypt_aad};
 use secure_memory::LockedBuffer;
@@ -21,6 +22,17 @@ const SALT_LEN: usize = 32;
 // magic(4) + version(1) + salt(32) + argon_time(4) + argon_memory(4)
 // + argon_threads(4) + vdf_iterations(8)
 const HEADER_LEN: usize = 4 + 1 + SALT_LEN + 4 + 4 + 4 + 8;
+/// Defensive cap on an on-disk vault. Secrets are small; a huge file is either
+/// corruption or a denial-of-service attempt.
+const MAX_VAULT_LEN: u64 = 32 * 1024 * 1024;
+/// Argon2 memory is in KiB. Reject values that would allocate gigabytes on open
+/// (a hostile vault header) while still allowing the test/dev 8 MiB floor.
+const MIN_ARGON_MEMORY_KIB: u32 = 8 * 1024;
+const MAX_ARGON_MEMORY_KIB: u32 = 1024 * 1024;
+const MIN_ARGON_TIME: u32 = 1;
+const MAX_ARGON_TIME: u32 = 32;
+const MIN_ARGON_THREADS: u32 = 1;
+const MAX_ARGON_THREADS: u32 = 16;
 
 #[derive(Serialize, Deserialize)]
 pub struct SecretEntry {
@@ -73,19 +85,48 @@ impl VaultHeader {
         let threads = u32::from_le_bytes(header[off..off + 4].try_into().unwrap());
         off += 4;
         let vdf_iterations = u64::from_le_bytes(header[off..off + 8].try_into().unwrap());
+        let params = Argon2Params {
+            time,
+            memory,
+            threads,
+        };
+        validate_kdf_params(&params, vdf_iterations)?;
         Ok((
             Self {
                 salt,
-                params: Argon2Params {
-                    time,
-                    memory,
-                    threads,
-                },
+                params,
                 vdf_iterations,
             },
             ciphertext,
         ))
     }
+}
+
+fn validate_kdf_params(params: &Argon2Params, vdf_iterations: u64) -> Result<(), String> {
+    if !(MIN_ARGON_TIME..=MAX_ARGON_TIME).contains(&params.time) {
+        return Err(format!(
+            "argon2 time {} is outside {MIN_ARGON_TIME}..={MAX_ARGON_TIME}",
+            params.time
+        ));
+    }
+    if !(MIN_ARGON_MEMORY_KIB..=MAX_ARGON_MEMORY_KIB).contains(&params.memory) {
+        return Err(format!(
+            "argon2 memory {} KiB is outside {MIN_ARGON_MEMORY_KIB}..={MAX_ARGON_MEMORY_KIB}",
+            params.memory
+        ));
+    }
+    if !(MIN_ARGON_THREADS..=MAX_ARGON_THREADS).contains(&params.threads) {
+        return Err(format!(
+            "argon2 threads {} is outside {MIN_ARGON_THREADS}..={MAX_ARGON_THREADS}",
+            params.threads
+        ));
+    }
+    if vdf_iterations > MAX_VDF_ITERATIONS {
+        return Err(format!(
+            "vdf_iterations {vdf_iterations} exceeds maximum {MAX_VDF_ITERATIONS}"
+        ));
+    }
+    Ok(())
 }
 
 pub struct LocalStore {
@@ -110,6 +151,7 @@ impl LocalStore {
         if salt.len() != SALT_LEN {
             return Err(format!("salt must be {} bytes", SALT_LEN));
         }
+        validate_kdf_params(params, vdf_iterations)?;
         // Atomically reserve the path (O_EXCL): this fails if the file already
         // exists, with no check-then-write TOCTOU race against another process.
         fs::OpenOptions::new()
@@ -146,6 +188,13 @@ impl LocalStore {
         passphrase: &[u8],
         hardware_key: Option<&[u8]>,
     ) -> Result<Self, String> {
+        let meta = fs::metadata(path).map_err(|e| format!("Failed to read vault: {}", e))?;
+        if meta.len() > MAX_VAULT_LEN {
+            return Err(format!(
+                "vault file is {} bytes; maximum is {MAX_VAULT_LEN}",
+                meta.len()
+            ));
+        }
         let data = fs::read(path).map_err(|e| format!("Failed to read vault: {}", e))?;
         let (header, ciphertext) = VaultHeader::parse(&data)?;
         let header_bytes = header.to_bytes();
@@ -257,6 +306,7 @@ impl LocalStore {
     /// associated data) and stores the ciphertext, giving defence-in-depth on top
     /// of the whole-vault envelope. The plaintext never touches disk in the clear.
     pub fn put_secret(&mut self, name: &str, plaintext: &[u8]) -> Result<(), String> {
+        validate_secret_name(name)?;
         let mut vk = self.value_key();
         let ciphertext = encrypt_aad(&vk, plaintext, name.as_bytes())
             .map_err(|e| format!("Failed to seal secret: {:?}", e));
@@ -390,6 +440,47 @@ mod tests {
         let params = fast_params();
         LocalStore::create(&path, b"right", &salt, &params, 0, None).unwrap();
         assert!(LocalStore::open(&path, b"wrong", None).is_err());
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn open_rejects_hostile_header_without_deriving() {
+        let path = temp_path();
+        let mut header = vec![0u8; HEADER_LEN + 16];
+        header[0..4].copy_from_slice(MAGIC);
+        header[4] = HEADER_VERSION;
+        // argon time at offset 5+32 = 37
+        header[37..41].copy_from_slice(&1u32.to_le_bytes());
+        header[41..45].copy_from_slice(&(MAX_ARGON_MEMORY_KIB + 1).to_le_bytes());
+        header[45..49].copy_from_slice(&1u32.to_le_bytes());
+        fs::write(&path, &header).unwrap();
+        match LocalStore::open(&path, b"pw", None) {
+            Ok(_) => panic!("hostile header must be rejected"),
+            Err(err) => assert!(err.contains("argon2 memory"), "{err}"),
+        }
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn create_rejects_hostile_kdf_params() {
+        let path = temp_path();
+        let salt = [3u8; SALT_LEN];
+        let huge = Argon2Params {
+            time: 1,
+            memory: MAX_ARGON_MEMORY_KIB + 1,
+            threads: 1,
+        };
+        assert!(LocalStore::create(&path, b"pw", &salt, &huge, 0, None).is_err());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn put_secret_rejects_control_character_names() {
+        let path = temp_path();
+        let salt = [3u8; SALT_LEN];
+        let params = fast_params();
+        let mut store = LocalStore::create(&path, b"pw", &salt, &params, 0, None).unwrap();
+        assert!(store.put_secret("bad\nname", b"v").is_err());
         fs::remove_file(&path).ok();
     }
 }

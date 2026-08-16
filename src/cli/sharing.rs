@@ -19,7 +19,7 @@ use crate::core::manager::SecretManager;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::OpenOptionsExt;
 use std::sync::Arc;
 use zeroize::Zeroize;
 
@@ -146,9 +146,19 @@ fn reconstruct_from_tokens(tokens: &[String]) -> Result<Vec<u8>, String> {
 /// Replaces path separators so a secret name like `ssh/id_ed25519` yields a safe
 /// flat filename.
 fn safe_stem(name: &str) -> String {
-    name.chars()
-        .map(|c| if c == '/' || c == '\\' { '_' } else { c })
-        .collect()
+    let s: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect();
+    if s.is_empty() || s == "." || s == ".." {
+        "share".to_string()
+    } else {
+        s
+    }
 }
 
 /// `share NAME --threshold M --shares N [--out DIR]`.
@@ -166,9 +176,15 @@ pub(crate) fn share(name: &str, threshold: usize, shares: usize, out: &str) -> R
     let mut written = Vec::with_capacity(tokens.len());
     for (i, token) in tokens.iter().enumerate() {
         let path = out_dir.join(format!("{stem}.share{}.txt", i + 1));
-        std::fs::write(&path, token).map_err(|e| format!("write {}: {e}", path.display()))?;
-        // Share files are sensitive: any `threshold` of them recover the secret.
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        // Refuse to clobber an existing share file (O_EXCL).
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+            .map_err(|e| format!("write {}: {e}", path.display()))?;
+        f.write_all(token.as_bytes())
+            .map_err(|e| format!("write {}: {e}", path.display()))?;
         written.push(path);
     }
 
@@ -280,5 +296,12 @@ mod tests {
     fn invalid_parameters_are_rejected() {
         assert!(split_into_tokens(b"s", 4, 3, "x").is_err()); // threshold > shares
         assert!(split_into_tokens(b"s", 1, 1, "x").is_err()); // shares < 2
+    }
+
+    #[test]
+    fn safe_stem_flattens_paths_and_dotdots() {
+        assert_eq!(safe_stem("ssh/id_ed25519"), "ssh_id_ed25519");
+        assert_eq!(safe_stem(".."), "share");
+        assert_eq!(safe_stem("../etc/passwd"), ".._etc_passwd");
     }
 }

@@ -23,6 +23,7 @@
 //! be compared *out of band* (read aloud / in person), never over the transfer
 //! channel (an attacker controls that).
 
+use crate::core::name::validate_secret_name;
 use crate::network::pairing::{generate_encapsulated_secret, PairingSession};
 use crate::network::{extract_secret_blob, prepare_secret_blob};
 use base64::{engine::general_purpose::STANDARD_NO_PAD as B64, Engine};
@@ -145,7 +146,7 @@ pub fn open_bundle(session: &PairingSession, bundle: &str) -> Result<Opened, Str
     inner.zeroize();
     let mut payload = payload?;
 
-    if let Err(e) = validate_name(&payload.name) {
+    if let Err(e) = validate_secret_name(&payload.name) {
         payload.secret.zeroize(); // never leak the plaintext on a rejected name
         return Err(e);
     }
@@ -153,21 +154,6 @@ pub fn open_bundle(session: &PairingSession, bundle: &str) -> Result<Opened, Str
         name: payload.name,
         secret: payload.secret,
     })
-}
-
-/// Rejects an implausible received secret name (empty, overlong, or containing
-/// control characters that could corrupt the terminal or the vault index).
-fn validate_name(name: &str) -> Result<(), String> {
-    if name.is_empty() {
-        return Err("received secret has an empty name".to_string());
-    }
-    if name.len() > 256 {
-        return Err("received secret name is too long".to_string());
-    }
-    if name.chars().any(|c| c.is_control()) {
-        return Err("received secret name contains control characters".to_string());
-    }
-    Ok(())
 }
 
 /// The verification code: a 64-bit fingerprint of the receiver's public key.

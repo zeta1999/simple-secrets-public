@@ -65,6 +65,8 @@ is clear about its edges. If you find a gap not listed here, treat it as a bug.
   (`vdf_iterations`) defaults to **0** on purpose — it adds wall-clock delay but
   no memory-hardness, so it is left off rather than shipped with a guessed value;
   `vdf_calibrate` is provided to tune it to a target if you want the extra delay.
+  Header parameters are bounded on open (memory, time, threads, iteration count,
+  file size) so a hostile vault cannot hang or OOM the process.
 - **Formal model is illustrative, not a proof of the shipped scheme.** The Lean
   model (`lean/`) builds in CI and discharges a worked example, but the
   scheme-level theorems (`Correctness`, `SubThresholdRejected`, `PerfectSecrecy`,

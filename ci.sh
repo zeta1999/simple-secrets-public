@@ -11,6 +11,11 @@ set -euo pipefail
 
 echo "Running CI for simple-secrets..."
 
+if [ ! -d "../simple-network-public" ] || [ ! -d "../rust-secure-memory-public/crates/secure-memory" ]; then
+    echo "missing sibling path deps (../simple-network-public, ../rust-secure-memory-public)" >&2
+    exit 1
+fi
+
 echo "==> Checking formatting..."
 cargo fmt -- --check
 

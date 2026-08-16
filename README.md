@@ -11,11 +11,13 @@
 <p align="center">
   <img src="https://img.shields.io/badge/part%20of-simple%20tools-00d4ff.svg" alt="part of simple tools">
   <img src="https://img.shields.io/badge/Rust-2021-orange.svg?logo=rust" alt="Rust">
-  <img src="https://img.shields.io/badge/status-released-success.svg" alt="released">
+  <img src="https://img.shields.io/badge/status-alpha-yellow.svg" alt="alpha">
   <img src="https://img.shields.io/badge/crypto-post--quantum-purple.svg" alt="post-quantum">
   <img src="https://img.shields.io/badge/secret-sharing-blueviolet.svg" alt="secret sharing">
   <img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="license">
 </p>
+
+> **⚠ Alpha / research-grade.** Read [`SECURITY.md`](SECURITY.md) before trusting this with anything that matters.
 
 > Part of [**simple tools**](https://zeta1999.github.io/renoir42/simple-tools.html) — small, composable Rust libraries for building tooling fast from a harness.
 
@@ -24,7 +26,7 @@
 ## What it does
 
 - **Secret sharing** — split secrets across shares so no single holder can recover them.
-- **Post-quantum at rest and on the wire** — built on [`rust-secure-memory`](https://github.com/zeta1999/rust-secure-memory-public) (secure allocation, zeroize) and [`simple-network`](https://github.com/zeta1999/simple-network-public) (PQC secure channel) for pairing and transport.
+- **Post-quantum at rest and on pairing** — vault encryption and ML-KEM-768 pairing via [`rust-secure-memory-public`](https://github.com/zeta1999/rust-secure-memory-public). Device transfer is copy/paste or LAN TCP of an already-sealed bundle; overlay (Tor/I2P) transport is not implemented.
 - **TOTP** — import or mint fresh TOTP secrets.
 - **A TUI** (ratatui) and QR support for pairing flows.
 

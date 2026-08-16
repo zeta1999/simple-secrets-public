@@ -20,6 +20,10 @@ pub struct Argon2Params {
     pub threads: u32,
 }
 
+/// Upper bound on sequential-hash iterations read from a vault header. Without
+/// this, a hostile file can hang `open` for an unbounded time.
+pub const MAX_VDF_ITERATIONS: u64 = 50_000_000;
+
 impl Default for Argon2Params {
     fn default() -> Self {
         Self {
@@ -39,6 +43,11 @@ pub fn derive_key(
 ) -> Result<LockedBuffer, String> {
     if salt.len() != 32 {
         return Err(format!("salt must be 32 bytes, got {}", salt.len()));
+    }
+    if vdf_iterations > MAX_VDF_ITERATIONS {
+        return Err(format!(
+            "vdf_iterations {vdf_iterations} exceeds maximum {MAX_VDF_ITERATIONS}"
+        ));
     }
 
     // Step 1: Argon2id
@@ -173,5 +182,11 @@ mod tests {
     #[test]
     fn vdf_eval_is_iteration_sensitive() {
         assert_ne!(vdf_eval(b"seed", 1), vdf_eval(b"seed", 2));
+    }
+
+    #[test]
+    fn derive_key_rejects_unbounded_vdf_iterations() {
+        let p = fast_params();
+        assert!(derive_key(b"pw", &[0u8; 32], &p, MAX_VDF_ITERATIONS + 1, None).is_err());
     }
 }

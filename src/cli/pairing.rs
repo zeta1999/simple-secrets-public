@@ -16,7 +16,7 @@ use crate::network::pairing::PairingSession;
 use crate::network::transfer::{self, Opened};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream, ToSocketAddrs, UdpSocket};
+use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::time::{Duration, Instant};
 use zeroize::Zeroize;
 
@@ -262,13 +262,22 @@ fn fmt_addr(ip: &str, port: u16) -> String {
     }
 }
 
+/// Parses a pairing-code address as a literal `ip:port` (no DNS). A hostname
+/// would let a swapped suffix steer the sender at an arbitrary host after the
+/// key fingerprint was already confirmed.
+fn parse_lan_addr(addr: &str) -> Result<SocketAddr, String> {
+    let sock: SocketAddr = addr
+        .parse()
+        .map_err(|_| format!("pairing address must be a literal ip:port, not {addr}"))?;
+    if sock.ip().is_unspecified() {
+        return Err("pairing address must not be unspecified (0.0.0.0 / ::)".to_string());
+    }
+    Ok(sock)
+}
+
 /// Connects to `addr`, sends one bundle line, and returns the ack line.
 fn send_over_tcp(addr: &str, bundle: &str) -> Result<String, String> {
-    let sock = addr
-        .to_socket_addrs()
-        .map_err(|e| format!("bad address {addr}: {e}"))?
-        .next()
-        .ok_or_else(|| format!("could not resolve {addr}"))?;
+    let sock = parse_lan_addr(addr)?;
     let mut stream = TcpStream::connect_timeout(&sock, Duration::from_secs(10))
         .map_err(|e| format!("connect to {addr} failed: {e}"))?;
     stream.set_write_timeout(Some(SOCKET_TIMEOUT)).ok();
@@ -348,11 +357,24 @@ fn write_private(path: &str, content: &str) -> Result<(), String> {
     use std::os::unix::fs::OpenOptionsExt;
     let mut f = std::fs::OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .mode(0o600)
         .open(path)
         .map_err(|e| format!("write {path}: {e}"))?;
     f.write_all(content.as_bytes())
         .map_err(|e| format!("write {path}: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_lan_addr_accepts_literals_and_rejects_hostnames() {
+        assert!(parse_lan_addr("192.168.1.9:7777").is_ok());
+        assert!(parse_lan_addr("[2001:db8::1]:7777").is_ok());
+        assert!(parse_lan_addr("evil.example:443").is_err());
+        assert!(parse_lan_addr("0.0.0.0:9").is_err());
+        assert!(parse_lan_addr("[::]:9").is_err());
+    }
 }
