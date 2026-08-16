@@ -70,3 +70,8 @@ scope.
 - **Persistent secret *type* metadata** — today "type" is creation-time UX; real
   typing needs a `SecretEntry` schema field. **mDNS/`.local` discovery** so LAN
   pairing needs no copied `ip:port` code.
+
+## Platform CI
+
+- [x] Run tests and CI on **linux/arm64** and **linux/amd64** via Docker on Mac
+  (QEMU for amd64).
